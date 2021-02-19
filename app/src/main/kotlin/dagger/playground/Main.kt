@@ -1,65 +1,36 @@
 package dagger.playground
 
-import dagger.Component
-import javax.inject.Inject
-
 fun main() {
-    // For each interface we annotate with the @Component annotation, Dagger generates an implementation of this interface.
-    // This implementation has the same name than the interface, but it's prefixed with "Dagger".
-    // Here, Dagger has generated a DaggerParentComponent implementation for the ParentComponent interface.
-    val component: ParentComponent = DaggerParentComponent.create()
+    // Get an instance of the parent component.
+    val companyComponent = DaggerCompanyComponent.create()
 
-    // Once the component is created, it acts like a black box: we can ask it to provide an instance of a class.
-    // Here, we don't know exactly how Dagger builds a Car, but the important thing is that we asked a Car and Dagger gave us a Car.
-    val car = component.getCar()
-    println(car)
+    // Print the Android team.
+    println(companyComponent.engineeringDepartmentComponent().androidTeam()) // Prints an hash code
 
-    // We can also ask Dagger to fill the attributes of a class that we have already created ourselves.
-    // Here, we have a parking. By calling component.inject(parking), we ask Dagger to fill every attribute of this
-    // parking that we have annotated with the @Inject annotation.
-    val parking = Parking()
-    component.inject(parking)
-    println(parking.car)
+    // Print the Android team again.
+    // We expect to get the same Android team, because AndroidTeam class is scoped with @EngineeringScope.
+    // BUT IT'S NOT THE CASE! We get a different Android team.
+    println(companyComponent.engineeringDepartmentComponent().androidTeam()) // Prints a different hash code
 
-}
+    // Why does it happen?
+    // Because the scope works only within the SAME INSTANCE of the engineering department subcomponent. But every time
+    // we call companyComponent.engineeringDepartmentComponent(), we get a new instance of the engineering department
+    // subcomponent.
+    val department1 = companyComponent.engineeringDepartmentComponent().also { println(it) }
+    val department2 = companyComponent.engineeringDepartmentComponent().also { println(it) } // department2 != department1
 
-class Parking {
+    // Let's check the consequence on the scoped AndroidTeam:
+    // If we get the Android team from the same instance of the engineering department subcomponent, the scope works:
+    println(department1.androidTeam()) // Prints an hash code
+    println(department1.androidTeam()) // Prints the same hash code
 
-    @Inject // @Inject on a class attribute means: "I want Dagger to fill this attribute when we call component.inject(this class)."
-    lateinit var car: Car
+    // But if we try to get the Android team from different instances of the engineering department subcomponent, the
+    // scope doesn't work anymore:
+    println(department1.androidTeam()) // Prints an hash code
+    println(department2.androidTeam()) // Prints a different hash code
 
-    override fun toString(): String {
-        return "I'm a parking with this car:\n  > $car"
-    }
-
-}
-
-
-// @Inject on a class constructor means: "If Dagger needs to build a wheel, it can use this constructor"
-class Wheel @Inject constructor() {
-    override fun toString(): String {
-        return "Michelin"
-    }
-}
-
-
-// If Dagger needs to build a Car, it will use this constructor. But because this constructor needs a Wheel, it will
-// build a Wheel first, and then build the Car.
-data class Car @Inject constructor(val wheel: Wheel) {
-    override fun toString(): String {
-        return "I'm a Renault with this wheel: $wheel"
-    }
-}
-
-
-
-@Component
-interface ParentComponent {
-    // We tell Dagger that we want it to generate an implementation that will be able to build cars.
-    // We rarely use this technique in Android.
-    fun getCar(): Car
-
-    // We tell Dagger that we want it to generate an implementation that will fill attributes of a Parking.
-    // We often use this technique to inject things in Android classes, for example: fun inject(activity: FooActivity)
-    fun inject(parking: Parking)
+    // CONCLUSION
+    // A Dagger scope works only within the SAME INSTANCE of a component or subcomponent.
+    // When we want the get the same instance of a class, we have to get it from the same instance of a (sub)component,
+    // otherwise it won't work.
 }
